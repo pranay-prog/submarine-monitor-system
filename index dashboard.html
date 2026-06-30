@@ -1,0 +1,777 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Submarine MAS — Alert &amp; Dashboard Agent</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css"/>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  :root{
+    --bg-primary:#ffffff;--bg-secondary:#f8f8f7;--bg-tertiary:#f1f0ec;
+    --text-primary:#1a1a18;--text-secondary:#6b6b67;--text-tertiary:#9b9b96;
+    --border-light:rgba(0,0,0,0.1);--border-mid:rgba(0,0,0,0.15);
+    --radius-md:8px;--radius-lg:12px;
+    --green:#22c55e;--green-bg:#f0fdf4;--green-text:#15803d;--green-border:#bbf7d0;
+    --amber:#f59e0b;--amber-bg:#fffbeb;--amber-text:#b45309;--amber-border:#fde68a;
+    --red:#ef4444;--red-bg:#fef2f2;--red-text:#b91c1c;--red-border:#fecaca;
+    --blue:#3b82f6;--indigo:#6366f1;
+    --font-mono:'Courier New',Courier,monospace;
+  }
+  @media(prefers-color-scheme:dark){
+    :root{
+      --bg-primary:#1e1e1c;--bg-secondary:#282825;--bg-tertiary:#141412;
+      --text-primary:#f0ede8;--text-secondary:#9b9b96;--text-tertiary:#6b6b67;
+      --border-light:rgba(255,255,255,0.08);--border-mid:rgba(255,255,255,0.12);
+      --green-bg:#052e16;--green-text:#4ade80;--green-border:#166534;
+      --amber-bg:#1c1400;--amber-text:#fbbf24;--amber-border:#92400e;
+      --red-bg:#1a0000;--red-text:#f87171;--red-border:#7f1d1d;
+    }
+  }
+  body{font-family:system-ui,-apple-system,sans-serif;background:var(--bg-tertiary);color:var(--text-primary);font-size:14px;min-height:100vh}
+  .shell{display:grid;grid-template-columns:220px 1fr;min-height:100vh}
+  @media(max-width:700px){.shell{grid-template-columns:1fr}}
+
+  /* SIDEBAR */
+  .sidebar{background:var(--bg-primary);border-right:0.5px solid var(--border-light);display:flex;flex-direction:column;gap:0;position:sticky;top:0;height:100vh;overflow-y:auto}
+  .sb-header{padding:16px 16px 14px;border-bottom:0.5px solid var(--border-light)}
+  .sb-title{font-size:13px;font-weight:500;color:var(--text-primary)}
+  .sb-sub{font-size:11px;color:var(--text-secondary);margin-top:2px}
+  .sb-section{padding:12px 16px 4px;font-size:10px;font-weight:500;color:var(--text-tertiary);letter-spacing:.08em;text-transform:uppercase}
+  .sb-item{display:flex;align-items:center;gap:10px;padding:7px 16px;cursor:pointer;border:none;background:none;width:100%;text-align:left;font-size:13px;color:var(--text-secondary);transition:background .15s}
+  .sb-item:hover{background:var(--bg-secondary)}
+  .sb-item.active{background:var(--bg-secondary);color:var(--text-primary);font-weight:500}
+  .dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;display:inline-block}
+  .dot-green{background:var(--green)}.dot-amber{background:var(--amber)}.dot-red{background:var(--red)}.dot-gray{background:var(--border-mid)}
+  .sb-footer{margin-top:auto;padding:12px 16px;border-top:0.5px solid var(--border-light)}
+  .conn-btn{width:100%;padding:7px 12px;border-radius:var(--radius-md);border:0.5px solid var(--border-mid);background:transparent;cursor:pointer;font-size:12px;font-weight:500;color:var(--text-primary);display:flex;align-items:center;justify-content:center;gap:6px;transition:background .15s}
+  .conn-btn:hover{background:var(--bg-secondary)}
+  .conn-btn.connected{border-color:var(--green);color:var(--green-text)}
+
+  /* MAIN */
+  .main{display:flex;flex-direction:column;overflow:auto}
+  .topbar{display:flex;align-items:center;justify-content:space-between;padding:11px 20px;background:var(--bg-primary);border-bottom:0.5px solid var(--border-light);position:sticky;top:0;z-index:10;flex-wrap:wrap;gap:8px}
+  .tb-title{font-size:15px;font-weight:500}
+  .tb-left{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+  .page-content{padding:16px 20px;display:flex;flex-direction:column;gap:12px}
+
+  /* PILLS */
+  .status-pill{display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:999px;font-size:11px;font-weight:500;border:0.5px solid;white-space:nowrap}
+  .pill-ok{background:var(--green-bg);color:var(--green-text);border-color:var(--green-border)}
+  .pill-warn{background:var(--amber-bg);color:var(--amber-text);border-color:var(--amber-border)}
+  .pill-danger{background:var(--red-bg);color:var(--red-text);border-color:var(--red-border)}
+  .pill-idle{background:var(--bg-secondary);color:var(--text-secondary);border-color:var(--border-light)}
+
+  /* CARDS */
+  .metric-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+  @media(max-width:600px){.metric-grid{grid-template-columns:1fr 1fr}}
+  .metric-card{background:var(--bg-primary);border:0.5px solid var(--border-light);border-radius:var(--radius-lg);padding:14px 16px}
+  .mc-label{font-size:11px;color:var(--text-secondary);margin-bottom:6px;display:flex;align-items:center;justify-content:space-between;gap:4px;flex-wrap:wrap}
+  .mc-value{font-size:26px;font-weight:500;line-height:1;margin-bottom:4px}
+  .mc-unit{font-size:12px;color:var(--text-secondary);font-weight:400}
+  .mc-bar{height:3px;background:var(--bg-secondary);border-radius:2px;margin-top:8px;overflow:hidden}
+  .mc-bar-fill{height:100%;border-radius:2px;transition:width .8s ease}
+  .row-2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  @media(max-width:600px){.row-2{grid-template-columns:1fr}}
+  .panel{background:var(--bg-primary);border:0.5px solid var(--border-light);border-radius:var(--radius-lg);padding:14px 16px}
+  .panel-title{font-size:11px;font-weight:500;color:var(--text-secondary);margin-bottom:12px;display:flex;align-items:center;gap:6px;text-transform:uppercase;letter-spacing:.05em;justify-content:space-between}
+
+  /* AI */
+  .anom-score-wrap{display:flex;align-items:center;gap:12px}
+  .anom-dial{width:72px;height:72px;flex-shrink:0}
+  .anom-info{flex:1}
+  .anom-status{font-size:18px;font-weight:500;margin-bottom:2px}
+  .anom-conf{font-size:12px;color:var(--text-secondary)}
+  .score-bars{display:flex;flex-direction:column;gap:6px;margin-top:10px}
+  .sb-row{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--text-secondary)}
+  .sb-track{flex:1;height:4px;background:var(--bg-secondary);border-radius:2px;overflow:hidden}
+  .sb-fill{height:100%;border-radius:2px;transition:width .8s}
+
+  /* AGENTS */
+  .agent-list{display:flex;flex-direction:column;gap:5px}
+  .agent-row{display:flex;align-items:center;justify-content:space-between;padding:6px 10px;background:var(--bg-secondary);border-radius:var(--radius-md);font-size:12px}
+  .agent-badge{display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:500;padding:2px 8px;border-radius:999px}
+  .badge-active{background:var(--green-bg);color:var(--green-text)}
+  .badge-idle{background:var(--bg-primary);color:var(--text-secondary);border:0.5px solid var(--border-light)}
+  .badge-processing{background:var(--amber-bg);color:var(--amber-text)}
+
+  /* ALERTS */
+  .alerts-list{display:flex;flex-direction:column;gap:5px;max-height:300px;overflow-y:auto}
+  .alert-item{display:flex;align-items:flex-start;gap:10px;padding:8px 10px;border-radius:var(--radius-md);border-left:3px solid;font-size:12px}
+  .alert-normal{background:var(--green-bg);border-color:var(--green)}
+  .alert-warn{background:var(--amber-bg);border-color:var(--amber)}
+  .alert-danger{background:var(--red-bg);border-color:var(--red)}
+  .alert-time{font-size:10px;color:var(--text-tertiary);white-space:nowrap;margin-top:1px}
+
+  /* EVAL */
+  .eval-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+  .eval-item{display:flex;flex-direction:column;gap:4px;font-size:12px}
+  .eval-label{color:var(--text-secondary)}
+  .eval-pct{font-size:20px;font-weight:500;line-height:1}
+  .eval-bar{height:3px;background:var(--bg-secondary);border-radius:2px;overflow:hidden;margin-top:4px}
+  .eval-fill{height:100%;border-radius:2px;transition:width 1s}
+
+  /* SPARKLINE */
+  .sparkline{display:flex;align-items:flex-end;gap:2px;height:48px;margin-top:8px}
+  .spark-bar{flex:1;min-width:4px;border-radius:1px;transition:height .5s}
+
+  /* PACKET LOG */
+  .packet-log{font-family:var(--font-mono);font-size:10.5px;color:var(--text-secondary);max-height:100px;overflow-y:auto;background:var(--bg-secondary);border-radius:var(--radius-md);padding:8px 10px;line-height:1.6}
+  .log-ok{color:var(--green-text)}.log-err{color:var(--red-text)}.log-info{color:#2563eb}
+
+  /* SOURCE TOGGLE */
+  .data-src-toggle{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text-secondary)}
+  .toggle-wrap{display:flex;background:var(--bg-secondary);border-radius:var(--radius-md);padding:2px;gap:2px}
+  .tog-btn{padding:4px 10px;border-radius:6px;border:none;cursor:pointer;font-size:11px;font-weight:500;background:transparent;color:var(--text-secondary);transition:all .15s}
+  .tog-btn.active{background:var(--bg-primary);color:var(--text-primary);box-shadow:0 1px 3px rgba(0,0,0,.08)}
+
+  /* SECURITY */
+  .sec-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-top:4px}
+  .sec-item{display:flex;align-items:center;justify-content:space-between;font-size:12px;padding:6px 0;border-bottom:0.5px solid var(--border-light)}
+
+  /* MODAL */
+  .conn-modal{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:100}
+  .conn-modal.hidden{display:none}
+  .modal-box{background:var(--bg-primary);border-radius:var(--radius-lg);border:0.5px solid var(--border-mid);padding:22px;width:360px;max-width:95vw}
+  .modal-title{font-size:15px;font-weight:500;margin-bottom:16px}
+  .modal-field{display:flex;flex-direction:column;gap:4px;margin-bottom:12px}
+  .modal-field label{font-size:12px;color:var(--text-secondary)}
+  .modal-field input,.modal-field select{width:100%;font-size:13px;padding:8px 10px;border-radius:var(--radius-md);border:0.5px solid var(--border-mid);background:var(--bg-primary);color:var(--text-primary);outline:none}
+  .modal-field input:focus,.modal-field select:focus{border-color:var(--blue)}
+  .modal-row{display:flex;gap:8px;margin-top:6px}
+  .modal-btn{flex:1;padding:9px;border-radius:var(--radius-md);border:0.5px solid var(--border-mid);background:transparent;cursor:pointer;font-size:13px;font-weight:500;color:var(--text-primary);transition:background .15s}
+  .modal-btn:hover{background:var(--bg-secondary)}
+  .modal-btn.primary{background:var(--text-primary);color:var(--bg-primary);border-color:var(--text-primary)}
+  .code-hint{font-family:var(--font-mono);font-size:10.5px;background:var(--bg-secondary);border-radius:var(--radius-md);padding:8px 10px;line-height:1.7;color:var(--text-secondary);margin-bottom:12px;word-break:break-all}
+  .code-hint b{color:var(--text-primary)}
+
+  /* PING ANIMATION */
+  .ping{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--green);animation:ping 1.5s ease-in-out infinite}
+  @keyframes ping{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.5;transform:scale(1.5)}}
+  .fade-in{animation:fadeIn .25s ease}
+  @keyframes fadeIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+</style>
+</head>
+<body>
+
+<div class="shell">
+  <!-- SIDEBAR -->
+  <nav class="sidebar" aria-label="Dashboard navigation">
+    <div class="sb-header">
+      <div class="sb-title">Submarine MAS</div>
+      <div class="sb-sub">Alert &amp; Dashboard Agent</div>
+    </div>
+    <div class="sb-section">Panels</div>
+    <button class="sb-item active" onclick="showPanel('env')"><span class="dot dot-green"></span>Environment</button>
+    <button class="sb-item" onclick="showPanel('ai')"><span class="dot dot-green"></span>AI Decision</button>
+    <button class="sb-item" onclick="showPanel('agents')"><span class="dot dot-green"></span>Agent Network</button>
+    <button class="sb-item" onclick="showPanel('eval')"><span class="dot dot-green"></span>System Evaluation</button>
+    <button class="sb-item" onclick="showPanel('security')"><span class="dot dot-green"></span>Security</button>
+    <button class="sb-item" onclick="showPanel('alerts')"><span class="dot dot-amber"></span>Alert Log</button>
+    <div class="sb-section">Data source</div>
+    <button class="sb-item active" id="sb-sim" onclick="setSource('sim')"><span class="dot dot-green"></span>Simulated data</button>
+    <div class="sb-footer">
+      <button class="conn-btn" id="conn-btn" onclick="openModal()">
+        <span class="dot dot-gray" id="conn-dot"></span>
+        <span id="conn-label">Connect hardware</span>
+      </button>
+    </div>
+  </nav>
+
+  <!-- MAIN AREA -->
+  <div class="main">
+    <header class="topbar">
+      <div class="tb-left">
+        <span class="tb-title" id="panel-title">Environmental Panel</span>
+        <span class="status-pill pill-ok" id="sys-status-pill"><span class="ping"></span>&nbsp;System online</span>
+      </div>
+      <div class="data-src-toggle">
+        <span>Source:</span>
+        <div class="toggle-wrap">
+          <button class="tog-btn active" id="tog-sim" onclick="setSource('sim')">Simulated</button>
+          <button class="tog-btn" id="tog-hw" onclick="setSource('hw')">Hardware</button>
+        </div>
+      </div>
+    </header>
+
+    <div class="page-content">
+
+      <!-- ── ENV PANEL ── -->
+      <div id="panel-env" class="fade-in">
+        <div class="metric-grid">
+          <div class="metric-card">
+            <div class="mc-label"><span>Pressure</span><span class="status-pill pill-ok" id="p-status">Normal</span></div>
+            <div class="mc-value"><span id="pressure-val">150.0</span><span class="mc-unit"> kPa</span></div>
+            <div class="mc-bar"><div class="mc-bar-fill" id="pressure-bar" style="width:60%;background:var(--blue)"></div></div>
+          </div>
+          <div class="metric-card">
+            <div class="mc-label"><span>Depth</span><span class="status-pill pill-ok" id="d-status">Normal</span></div>
+            <div class="mc-value"><span id="depth-val">15.0</span><span class="mc-unit"> m</span></div>
+            <div class="mc-bar"><div class="mc-bar-fill" id="depth-bar" style="width:30%;background:var(--indigo)"></div></div>
+          </div>
+          <div class="metric-card">
+            <div class="mc-label"><span>Dissolved O₂</span><span class="status-pill pill-ok" id="o2-status">Normal</span></div>
+            <div class="mc-value"><span id="o2-val">6.20</span><span class="mc-unit"> mg/L</span></div>
+            <div class="mc-bar"><div class="mc-bar-fill" id="o2-bar" style="width:62%;background:var(--green)"></div></div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-title"><span>O₂ trend — last 20 readings</span></div>
+          <div class="sparkline" id="spark"></div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-title"><span>Raw packet log (Data Acquisition Agent)</span></div>
+          <div class="packet-log" id="pkt-log">Waiting for packets...</div>
+        </div>
+      </div>
+
+      <!-- ── AI PANEL ── -->
+      <div id="panel-ai" class="fade-in" style="display:none">
+        <div class="row-2">
+          <div class="panel">
+            <div class="panel-title"><span>Isolation Forest — anomaly detection</span></div>
+            <div class="anom-score-wrap">
+              <svg class="anom-dial" viewBox="0 0 72 72" aria-label="Anomaly score dial">
+                <circle cx="36" cy="36" r="28" fill="none" stroke="var(--bg-secondary)" stroke-width="8"/>
+                <circle cx="36" cy="36" r="28" fill="none" id="dial-arc"
+                  stroke="var(--green)" stroke-width="8"
+                  stroke-dasharray="176" stroke-dashoffset="159"
+                  stroke-linecap="round" transform="rotate(-90 36 36)"/>
+                <text x="36" y="40" text-anchor="middle" font-size="13" font-weight="500" fill="var(--text-primary)" id="dial-text">0.12</text>
+              </svg>
+              <div class="anom-info">
+                <div class="anom-status" id="anom-status-text">Normal</div>
+                <div class="anom-conf" id="anom-conf-text">Confidence: 88%</div>
+                <div style="margin-top:6px"><span class="status-pill pill-ok" id="anom-pill">Normal</span></div>
+              </div>
+            </div>
+            <div class="score-bars">
+              <div class="sb-row"><span style="min-width:64px">Pressure</span><div class="sb-track"><div class="sb-fill" id="ai-p-bar" style="width:40%;background:var(--blue)"></div></div><span id="ai-p-val" style="min-width:36px;text-align:right">40%</span></div>
+              <div class="sb-row"><span style="min-width:64px">Depth</span><div class="sb-track"><div class="sb-fill" id="ai-d-bar" style="width:30%;background:var(--indigo)"></div></div><span id="ai-d-val" style="min-width:36px;text-align:right">30%</span></div>
+              <div class="sb-row"><span style="min-width:64px">O₂</span><div class="sb-track"><div class="sb-fill" id="ai-o2-bar" style="width:62%;background:var(--green)"></div></div><span id="ai-o2-val" style="min-width:36px;text-align:right">62%</span></div>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-title"><span>Feature vector (Fusion Agent output)</span></div>
+            <div style="font-family:var(--font-mono);font-size:12px;color:var(--text-secondary);line-height:2.1">
+              <div>Input&nbsp;&nbsp;&nbsp;&nbsp;: [<span id="fv-p">150.0</span>, <span id="fv-d">15.0</span>, <span id="fv-o2">6.20</span>]</div>
+              <div>Score&nbsp;&nbsp;&nbsp;&nbsp;: <span id="fv-score" style="color:var(--text-primary);font-weight:500">0.120</span></div>
+              <div>Threshold: <span style="color:var(--text-primary)">0.600</span></div>
+              <div>Model&nbsp;&nbsp;&nbsp;&nbsp;: <span style="color:var(--text-primary)">Isolation Forest</span></div>
+              <div>Contamination: <span style="color:var(--text-primary)">0.05</span></div>
+              <div>Estimators: <span style="color:var(--text-primary)">100</span></div>
+            </div>
+            <div style="margin-top:12px;font-size:11px;color:var(--text-tertiary)">Updated on every validated cycle</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── AGENTS PANEL ── -->
+      <div id="panel-agents" class="fade-in" style="display:none">
+        <div class="panel">
+          <div class="panel-title"><span>Multi-Agent Network</span></div>
+          <div class="agent-list" id="agent-list">
+            <div class="agent-row"><span>Data Acquisition Agent</span><span class="agent-badge badge-active"><span class="dot dot-green"></span>&nbsp;Active</span></div>
+            <div class="agent-row"><span>Data Validation Agent</span><span class="agent-badge badge-active"><span class="dot dot-green"></span>&nbsp;Active</span></div>
+            <div class="agent-row"><span>Data Fusion Agent</span><span class="agent-badge badge-processing"><span class="dot dot-amber"></span>&nbsp;Processing</span></div>
+            <div class="agent-row"><span>Anomaly Detection Agent</span><span class="agent-badge badge-active"><span class="dot dot-green"></span>&nbsp;Active</span></div>
+            <div class="agent-row"><span>Evaluation Agent</span><span class="agent-badge badge-active"><span class="dot dot-green"></span>&nbsp;Active</span></div>
+            <div class="agent-row"><span>Alert &amp; Dashboard Agent</span><span class="agent-badge badge-active"><span class="dot dot-green"></span>&nbsp;Active (self)</span></div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-title"><span>Blackboard memory — latest fused state</span></div>
+          <div style="font-family:var(--font-mono);font-size:11.5px;color:var(--text-secondary);line-height:1.9">
+            <div>timestamp&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;: <span id="bb-ts" style="color:var(--text-primary)">—</span></div>
+            <div>pressure_kpa&nbsp;&nbsp;: <span id="bb-p" style="color:var(--text-primary)">—</span></div>
+            <div>depth_m&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;: <span id="bb-d" style="color:var(--text-primary)">—</span></div>
+            <div>o2_mgl&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;: <span id="bb-o2" style="color:var(--text-primary)">—</span></div>
+            <div>anomaly_score&nbsp;: <span id="bb-score" style="color:var(--text-primary)">—</span></div>
+            <div>rejected_pkts&nbsp;: <span id="bb-rej" style="color:var(--text-primary)">0</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── EVAL PANEL ── -->
+      <div id="panel-eval" class="fade-in" style="display:none">
+        <div class="panel">
+          <div class="panel-title"><span>System evaluation metrics (Evaluation Agent)</span></div>
+          <div class="eval-grid">
+            <div class="eval-item"><span class="eval-label">Task success rate</span><span class="eval-pct" id="ev-ts">96%</span><div class="eval-bar"><div class="eval-fill" id="evf-ts" style="width:96%;background:var(--green)"></div></div></div>
+            <div class="eval-item"><span class="eval-label">Tool usage quality</span><span class="eval-pct" id="ev-tq">94%</span><div class="eval-bar"><div class="eval-fill" id="evf-tq" style="width:94%;background:var(--blue)"></div></div></div>
+            <div class="eval-item"><span class="eval-label">Reasoning coherence</span><span class="eval-pct" id="ev-rc">92%</span><div class="eval-bar"><div class="eval-fill" id="evf-rc" style="width:92%;background:var(--indigo)"></div></div></div>
+            <div class="eval-item"><span class="eval-label">Cost efficiency</span><span class="eval-pct" id="ev-ce">90%</span><div class="eval-bar"><div class="eval-fill" id="evf-ce" style="width:90%;background:var(--amber)"></div></div></div>
+          </div>
+        </div>
+
+        <div class="row-2">
+          <div class="panel">
+            <div class="panel-title"><span>Model metrics &amp; drift</span></div>
+            <div style="font-size:12px;color:var(--text-secondary);line-height:2">
+              <div>Model&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;: <span style="color:var(--text-primary)">Isolation Forest v1.3</span></div>
+              <div>Precision&nbsp;&nbsp;&nbsp;: <span id="ev-prec" style="color:var(--text-primary)">97.3%</span></div>
+              <div>Recall&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;: <span id="ev-rec" style="color:var(--text-primary)">94.1%</span></div>
+              <div>F1 Score&nbsp;&nbsp;&nbsp;&nbsp;: <span id="ev-f1" style="color:var(--text-primary)">95.7%</span></div>
+              <div>Drift&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;: <span style="color:var(--green-text);font-weight:500">Not detected</span></div>
+              <div>Last retrain : <span style="color:var(--text-primary)">On start</span></div>
+            </div>
+          </div>
+          <div class="panel">
+            <div class="panel-title"><span>Cycle statistics</span></div>
+            <div style="font-size:12px;color:var(--text-secondary);line-height:2">
+              <div>Total packets&nbsp;: <span id="ev-total" style="color:var(--text-primary)">0</span></div>
+              <div>Validated&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;: <span id="ev-valid" style="color:var(--text-primary)">0</span></div>
+              <div>Rejected&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;: <span id="ev-rej" style="color:var(--text-primary)">0</span></div>
+              <div>Anomalies&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;: <span id="ev-anom" style="color:var(--text-primary)">0</span></div>
+              <div>System uptime&nbsp;: <span id="ev-uptime" style="color:var(--text-primary)">0s</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── SECURITY PANEL ── -->
+      <div id="panel-security" class="fade-in" style="display:none">
+        <div class="panel">
+          <div class="panel-title"><span>Security status</span></div>
+          <div class="sec-grid">
+            <div class="sec-item"><span style="color:var(--text-secondary)">Encryption</span><span class="status-pill pill-ok">XChaCha20-Poly1305</span></div>
+            <div class="sec-item"><span style="color:var(--text-secondary)">Authentication</span><span class="status-pill pill-ok">Verified</span></div>
+            <div class="sec-item"><span style="color:var(--text-secondary)">Rejected packets</span><span id="sec-rej" style="font-weight:500">0</span></div>
+            <div class="sec-item"><span style="color:var(--text-secondary)">Comm health</span><span class="status-pill pill-ok" id="sec-health">Good</span></div>
+            <div class="sec-item"><span style="color:var(--text-secondary)">LoRa RSSI</span><span id="sec-rssi" style="font-weight:500">—</span></div>
+            <div class="sec-item"><span style="color:var(--text-secondary)">Last verified</span><span id="sec-ts" style="font-size:11px">—</span></div>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-title"><span>Nonce / sequence integrity</span></div>
+          <div style="font-family:var(--font-mono);font-size:11.5px;color:var(--text-secondary);line-height:1.9">
+            <div>Nonce counter&nbsp;&nbsp;: <span id="sec-nonce" style="color:var(--text-primary)">0</span></div>
+            <div>Replay attacks&nbsp;: <span style="color:var(--green-text)">None detected</span></div>
+            <div>Sequence gaps&nbsp;&nbsp;: <span id="sec-gaps" style="color:var(--text-primary)">0</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── ALERTS PANEL ── -->
+      <div id="panel-alerts" class="fade-in" style="display:none">
+        <div class="panel">
+          <div class="panel-title">
+            <span>Alert log</span>
+            <button onclick="clearAlerts()" style="font-size:11px;background:none;border:none;cursor:pointer;color:var(--text-secondary);padding:0">Clear all</button>
+          </div>
+          <div class="alerts-list" id="alerts-list">
+            <div style="font-size:12px;color:var(--text-secondary);text-align:center;padding:24px">No alerts yet</div>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /page-content -->
+  </div><!-- /main -->
+</div><!-- /shell -->
+
+<!-- CONNECTION MODAL -->
+<div class="conn-modal hidden" id="modal" role="dialog" aria-modal="true" aria-label="Hardware connection settings">
+  <div class="modal-box">
+    <div class="modal-title">Connect to hardware</div>
+    <div class="modal-field">
+      <label for="conn-type">Connection type</label>
+      <select id="conn-type" onchange="updateConnType()">
+        <option value="serial">Serial / USB (Arduino or ESP32)</option>
+        <option value="ws">WebSocket (port receiver server)</option>
+        <option value="http">HTTP polling (REST endpoint)</option>
+      </select>
+    </div>
+
+    <!-- SERIAL -->
+    <div id="serial-fields">
+      <div class="modal-field">
+        <label for="baud">Baud rate</label>
+        <select id="baud">
+          <option>9600</option><option selected>115200</option><option>57600</option><option>38400</option>
+        </select>
+      </div>
+      <div class="code-hint">
+        <b>Arduino Serial.println() format:</b><br>
+        PRESSURE:150.5,DEPTH:15.2,O2:6.1,SCORE:0.12,STATUS:NORMAL,CONF:88
+      </div>
+      <p style="font-size:11px;color:var(--text-secondary);margin-bottom:12px">
+        Requires Chrome or Edge. Click Connect then select your COM port.
+      </p>
+    </div>
+
+    <!-- WEBSOCKET -->
+    <div id="ws-fields" style="display:none">
+      <div class="modal-field">
+        <label for="ws-url">WebSocket URL</label>
+        <input type="text" id="ws-url" value="ws://localhost:8765" placeholder="ws://host:port"/>
+      </div>
+      <div class="code-hint">
+        <b>Expected JSON from server:</b><br>
+        {"pressure":150.5,"depth":15.2,"o2":6.1,"score":0.12,"status":"NORMAL","conf":88}
+      </div>
+    </div>
+
+    <!-- HTTP -->
+    <div id="http-fields" style="display:none">
+      <div class="modal-field">
+        <label for="http-url">Endpoint URL</label>
+        <input type="text" id="http-url" value="http://localhost:5000/api/readings" placeholder="http://host:port/path"/>
+      </div>
+      <div class="modal-field">
+        <label for="poll-interval">Poll interval (ms)</label>
+        <input type="number" id="poll-interval" value="1000" min="200"/>
+      </div>
+      <div class="code-hint">
+        <b>Expected JSON response:</b><br>
+        {"pressure":150.5,"depth":15.2,"o2":6.1,"score":0.12,"status":"NORMAL","conf":88}
+      </div>
+    </div>
+
+    <div class="modal-row">
+      <button class="modal-btn" onclick="closeModal()">Cancel</button>
+      <button class="modal-btn primary" onclick="connectHW()">Connect</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── STATE ──────────────────────────────────────────────────
+let currentPanel='env', dataSource='sim', connected=false;
+let simInterval=null, hwInterval=null, wsConn=null;
+let totalPackets=0, validPackets=0, rejPackets=0, anomalyCount=0;
+let nonce=0, gaps=0, rejectedSec=0;
+let startTime=Date.now();
+let o2History=Array(20).fill(6.2);
+let alerts=[];
+let lastData={pressure:150,depth:15,o2:6.2,score:0.12,status:'Normal',conf:88};
+
+// ── PANEL NAV ──────────────────────────────────────────────
+function showPanel(p){
+  document.querySelectorAll('[id^="panel-"]').forEach(el=>el.style.display='none');
+  const el=document.getElementById('panel-'+p);
+  if(el){el.style.display='';el.classList.remove('fade-in');void el.offsetWidth;el.classList.add('fade-in');}
+  document.querySelectorAll('.sb-item').forEach(b=>b.classList.remove('active'));
+  const idx={env:0,ai:1,agents:2,eval:3,security:4,alerts:5};
+  document.querySelectorAll('.sb-item')[idx[p]]?.classList.add('active');
+  const titles={env:'Environmental Panel',ai:'AI Decision Panel',agents:'Agent Network',eval:'System Evaluation',security:'Security Panel',alerts:'Alert Log'};
+  document.getElementById('panel-title').textContent=titles[p]||p;
+  currentPanel=p;
+}
+
+// ── DATA SOURCE TOGGLE ────────────────────────────────────
+function setSource(s){
+  dataSource=s;
+  document.getElementById('tog-sim').classList.toggle('active',s==='sim');
+  document.getElementById('tog-hw').classList.toggle('active',s==='hw');
+  if(s==='sim')startSim(); else stopSim();
+}
+
+// ── MODAL ─────────────────────────────────────────────────
+function openModal(){document.getElementById('modal').classList.remove('hidden')}
+function closeModal(){document.getElementById('modal').classList.add('hidden')}
+function updateConnType(){
+  const t=document.getElementById('conn-type').value;
+  document.getElementById('serial-fields').style.display=t==='serial'?'':'none';
+  document.getElementById('ws-fields').style.display=t==='ws'?'':'none';
+  document.getElementById('http-fields').style.display=t==='http'?'':'none';
+}
+
+// ── HARDWARE CONNECTION ────────────────────────────────────
+function connectHW(){
+  const t=document.getElementById('conn-type').value;
+  closeModal();
+  if(t==='ws') connectWS();
+  else if(t==='http') connectHTTP();
+  else if(t==='serial') connectSerial();
+}
+
+async function connectSerial(){
+  if(!('serial' in navigator)){
+    addAlert('danger','Web Serial API not supported. Use Chrome or Edge (not Firefox).');
+    return;
+  }
+  try{
+    const port=await navigator.serial.requestPort();
+    const baud=parseInt(document.getElementById('baud').value);
+    await port.open({baudRate:baud});
+    setConnected(true,'serial');
+    stopSim();
+    addAlert('normal','Serial port opened at '+baud+' baud');
+    const reader=port.readable.getReader();
+    let buf='';
+    while(true){
+      const {value,done}=await reader.read();
+      if(done) break;
+      buf+=new TextDecoder().decode(value);
+      const lines=buf.split('\n');
+      buf=lines.pop();
+      lines.forEach(l=>parseHWLine(l.trim()));
+    }
+  }catch(e){
+    addAlert('warn','Serial error: '+e.message);
+    setConnected(false,'');
+  }
+}
+
+function connectWS(){
+  const url=document.getElementById('ws-url').value.trim();
+  try{
+    if(wsConn){wsConn.close();}
+    wsConn=new WebSocket(url);
+    wsConn.onopen=()=>{
+      setConnected(true,'WebSocket');
+      stopSim();
+      addAlert('normal','WebSocket connected to '+url);
+    };
+    wsConn.onmessage=e=>{
+      try{ingestData(JSON.parse(e.data));}
+      catch{parseHWLine(e.data);}
+    };
+    wsConn.onerror=()=>addAlert('danger','WebSocket error. Is the server running at '+url+'?');
+    wsConn.onclose=()=>{setConnected(false,'');addAlert('warn','WebSocket disconnected.');};
+  }catch(e){addAlert('danger','WS error: '+e.message);}
+}
+
+function connectHTTP(){
+  const url=document.getElementById('http-url').value.trim();
+  const interval=Math.max(200,parseInt(document.getElementById('poll-interval').value)||1000);
+  if(hwInterval) clearInterval(hwInterval);
+  setConnected(true,'HTTP');
+  stopSim();
+  addAlert('normal','HTTP polling started every '+interval+'ms → '+url);
+  hwInterval=setInterval(async()=>{
+    try{
+      const r=await fetch(url);
+      if(!r.ok) throw new Error('HTTP '+r.status);
+      const d=await r.json();
+      ingestData(d);
+    }catch(e){
+      addAlert('warn','Poll failed: '+e.message);
+    }
+  },interval);
+}
+
+function setConnected(c,type){
+  connected=c;
+  document.getElementById('conn-dot').className='dot '+(c?'dot-green':'dot-gray');
+  document.getElementById('conn-label').textContent=c?('Connected — '+type):'Connect hardware';
+  document.getElementById('conn-btn').className='conn-btn'+(c?' connected':'');
+}
+
+// ── PACKET PARSING ─────────────────────────────────────────
+// Accepts: PRESSURE:150.5,DEPTH:15.2,O2:6.1,SCORE:0.12,STATUS:NORMAL,CONF:88
+function parseHWLine(line){
+  if(!line||line.startsWith('//')) return;
+  logPacket(line,true);
+  const parts={};
+  line.split(',').forEach(seg=>{
+    const i=seg.indexOf(':');
+    if(i>0){
+      const k=seg.slice(0,i).trim().toLowerCase();
+      const v=seg.slice(i+1).trim();
+      parts[k]=isNaN(v)?v:parseFloat(v);
+    }
+  });
+  const d={
+    pressure: parts.pressure ?? parts.p ?? lastData.pressure,
+    depth:    parts.depth    ?? parts.d ?? lastData.depth,
+    o2:       parts.o2 ?? parts.oxygen ?? parts.dissolved_o2 ?? lastData.o2,
+    score:    parts.score ?? parts.anomaly_score ?? lastData.score,
+    status:   parts.status ?? lastData.status,
+    conf:     parts.conf ?? parts.confidence ?? lastData.conf
+  };
+  ingestData(d);
+}
+
+// ── DATA INGESTION (all agents simulated here) ─────────────
+function ingestData(d){
+  totalPackets++;
+
+  // Agent 2: Validation
+  const valid=(
+    d.pressure > 0 && d.pressure < 1500 &&
+    d.depth >= 0   && d.depth < 600 &&
+    d.o2 >= 0      && d.o2 <= 20
+  );
+  if(!valid){
+    rejPackets++;rejectedSec++;
+    logPacket('  ↳ [Validation Agent] REJECTED — values out of range',false);
+    return;
+  }
+  validPackets++;nonce++;
+
+  // Agent 3: Fusion — merge into blackboard
+  lastData={...lastData,...d};
+  o2History.push(d.o2);
+  if(o2History.length>20) o2History.shift();
+
+  // Agent 4: Anomaly classification
+  const score=parseFloat(d.score)||0;
+  if(score>0.6) anomalyCount++;
+
+  // Agent 6: Alert generation
+  checkAlerts(d);
+  updateUI();
+}
+
+function checkAlerts(d){
+  const score=parseFloat(d.score)||0;
+  if(d.o2<2) addAlert('danger',`Critical O₂: ${d.o2.toFixed(2)} mg/L — hypoxic conditions detected`);
+  else if(d.o2<4) addAlert('warn',`Low O₂: ${d.o2.toFixed(2)} mg/L — below safe threshold`);
+  if(d.pressure>600) addAlert('warn',`High pressure: ${d.pressure.toFixed(1)} kPa — check hull sensors`);
+  if(score>0.6) addAlert('danger',`Anomaly detected — Score: ${score.toFixed(3)}, Confidence: ${d.conf||'?'}%`);
+  if(rejectedSec>5){ addAlert('warn','High packet rejection rate — check hardware connection'); rejectedSec=0; }
+}
+
+// ── UI UPDATE ──────────────────────────────────────────────
+function updateUI(){
+  const d=lastData;
+  const score=parseFloat(d.score)||0;
+  const isAnom=score>0.6;
+  const pPct=Math.min(100,Math.round(d.pressure/10));
+  const dPct=Math.min(100,Math.round(d.depth/5));
+  const o2Pct=Math.min(100,Math.round(d.o2/14*100));
+
+  // Env
+  setText('pressure-val',toF(d.pressure,1));
+  setText('depth-val',toF(d.depth,1));
+  setText('o2-val',toF(d.o2,2));
+  setBar('pressure-bar',pPct);setBar('depth-bar',dPct);setBar('o2-bar',o2Pct);
+  setPill('p-status',d.pressure<600?'Normal':'High',d.pressure<600?'pill-ok':'pill-warn');
+  setPill('d-status','Normal','pill-ok');
+  setPill('o2-status',d.o2>=4?'Normal':d.o2>=2?'Low O₂':'Critical',d.o2>=4?'pill-ok':d.o2>=2?'pill-warn':'pill-danger');
+
+  // AI dial
+  const arcLen=176;
+  const arc=document.getElementById('dial-arc');
+  if(arc){
+    arc.setAttribute('stroke-dashoffset',arcLen-Math.round(score*arcLen));
+    arc.setAttribute('stroke',isAnom?'var(--red)':'var(--green)');
+  }
+  setText('dial-text',score.toFixed(2));
+  setText('anom-status-text',isAnom?'Anomaly':'Normal');
+  setText('anom-conf-text','Confidence: '+(d.conf||88)+'%');
+  const apill=document.getElementById('anom-pill');
+  if(apill){apill.className='status-pill '+(isAnom?'pill-danger':'pill-ok');apill.textContent=isAnom?'⚠ Anomaly':'Normal';}
+  setBar('ai-p-bar',pPct);setBar('ai-d-bar',dPct);setBar('ai-o2-bar',o2Pct);
+  setText('ai-p-val',pPct+'%');setText('ai-d-val',dPct+'%');setText('ai-o2-val',o2Pct+'%');
+  setText('fv-p',toF(d.pressure,1));setText('fv-d',toF(d.depth,1));setText('fv-o2',toF(d.o2,2));
+  setText('fv-score',score.toFixed(3));
+
+  // Blackboard
+  const ts=new Date().toLocaleTimeString();
+  setText('bb-ts',ts);setText('bb-p',toF(d.pressure,1));setText('bb-d',toF(d.depth,1));
+  setText('bb-o2',toF(d.o2,2));setText('bb-score',score.toFixed(3));setText('bb-rej',rejPackets);
+
+  // Eval
+  setText('ev-total',totalPackets);setText('ev-valid',validPackets);
+  setText('ev-rej',rejPackets);setText('ev-anom',anomalyCount);
+  setText('ev-uptime',Math.round((Date.now()-startTime)/1000)+'s');
+
+  // Security
+  setText('sec-rej',rejectedSec);setText('sec-nonce',nonce);
+  setText('sec-gaps',gaps);setText('sec-ts',ts);
+  setText('sec-rssi','-'+(Math.round(Math.random()*20+70))+' dBm');
+
+  renderSparkline();
+}
+
+function toF(v,dec){return(typeof v==='number'?v:parseFloat(v)||0).toFixed(dec);}
+function setText(id,v){const el=document.getElementById(id);if(el)el.textContent=v;}
+function setBar(id,pct){const el=document.getElementById(id);if(el)el.style.width=Math.max(0,Math.min(100,pct))+'%';}
+function setPill(id,text,cls){
+  const el=document.getElementById(id);
+  if(el){el.className='status-pill '+cls;el.textContent=text;}
+}
+
+function renderSparkline(){
+  const sp=document.getElementById('spark');if(!sp)return;
+  const max=Math.max(...o2History)||1;
+  const min=Math.min(...o2History,0);
+  const range=max-min||1;
+  sp.innerHTML=o2History.map(v=>{
+    const pct=Math.round((v-min)/range*100);
+    const color=v<4?'var(--red)':v<6?'var(--amber)':'var(--green)';
+    return`<div class="spark-bar" style="height:${Math.max(4,pct)}%;background:${color}"></div>`;
+  }).join('');
+}
+
+// ── ALERTS ────────────────────────────────────────────────
+function addAlert(type,msg){
+  const now=new Date().toLocaleTimeString();
+  alerts.unshift({type,msg,time:now});
+  if(alerts.length>100) alerts.pop();
+  renderAlerts();
+}
+function clearAlerts(){
+  alerts=[];renderAlerts();
+}
+function renderAlerts(){
+  const el=document.getElementById('alerts-list');
+  if(!el)return;
+  if(!alerts.length){
+    el.innerHTML='<div style="font-size:12px;color:var(--text-secondary);text-align:center;padding:24px">No alerts</div>';
+    return;
+  }
+  el.innerHTML=alerts.map(a=>`
+    <div class="alert-item alert-${a.type}">
+      <div style="flex:1;color:var(--text-primary)">${a.msg}</div>
+      <div class="alert-time">${a.time}</div>
+    </div>`).join('');
+}
+
+// ── PACKET LOG ────────────────────────────────────────────
+function logPacket(line,ok){
+  const log=document.getElementById('pkt-log');if(!log)return;
+  const ts=new Date().toLocaleTimeString();
+  const cls=ok?'log-ok':'log-err';
+  const span=document.createElement('span');
+  span.className=cls;
+  span.textContent='['+ts+'] '+line+'\n';
+  log.appendChild(span);
+  if(log.childNodes.length>120){log.removeChild(log.firstChild);}
+  log.scrollTop=log.scrollHeight;
+}
+
+// ── SIMULATION ────────────────────────────────────────────
+function simTick(){
+  const t=Date.now()/1000;
+  const base={
+    pressure: +(150+Math.sin(t/10)*20+(Math.random()-0.5)*6).toFixed(2),
+    depth:    +(15+Math.sin(t/7)*3+(Math.random()-0.5)*1.2).toFixed(2),
+    o2:       +(6.2+Math.cos(t/8)*1.5+(Math.random()-0.5)*0.4).toFixed(3),
+    conf:     Math.round(78+Math.random()*20)
+  };
+  // Inject anomaly ~5% of the time
+  if(Math.random()<0.05){
+    base.o2=+(1.0+Math.random()*0.8).toFixed(3);
+    base.score=+(0.80+Math.random()*0.15).toFixed(3);
+  } else {
+    base.score=+(0.05+Math.random()*0.18).toFixed(3);
+  }
+  base.status=base.score>0.6?'ANOMALY':'NORMAL';
+  const line=`PRESSURE:${base.pressure},DEPTH:${base.depth},O2:${base.o2},SCORE:${base.score},STATUS:${base.status},CONF:${base.conf}`;
+  logPacket(line,true);
+  ingestData(base);
+}
+
+function startSim(){
+  if(simInterval) return;
+  simInterval=setInterval(simTick,2000);
+  simTick();
+}
+function stopSim(){
+  if(simInterval){clearInterval(simInterval);simInterval=null;}
+}
+
+// ── INIT ──────────────────────────────────────────────────
+startSim();
+addAlert('normal','System initialized — all 6 agents online');
+addAlert('normal','Running in simulation mode. Use "Connect hardware" to switch to live data.');
+</script>
+</body>
+</html>
